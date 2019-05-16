@@ -1,0 +1,24 @@
+#!/bin/bash
+
+q=${1//\//\\\/}
+fn=${2:-.}
+
+cols=$(stty size | cut -d ' ' -f 2)
+
+find "$fn" -type f -not -name '.*' -not -path '*/.*' -not -path '*/node_modules/*' -not -path '*/vendor/*' -not -path '*/venv/*' -not -path '*/virtualenv/*' \
+    -exec isutf8 -q '{}' \; \
+    -exec awk '
+        /'"$q"'/ {
+            where = match($0, /'"$q"'/)
+            pfxlen = length(FILENAME) + 1
+            space = '$cols' - pfxlen
+            fn = "\033[35m\033[K" FILENAME "\033[m\033[K"
+            OFS="\033[36m\033[K:\033[m\033[K"
+            line = $0
+            if (length > space) {
+                head = where < space / 2 ? 0 : where - space / 2
+                line = substr($0, head, space)
+            }
+            gsub(/'"$q"'/, "\033[01;31m\033[K&\033[m\033[K", line)
+            print fn, line
+        }' '{}' +
