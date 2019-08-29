@@ -1,0 +1,105 @@
+#!/bin/sh
+
+base_url=https://releases.hashicorp.com/terraform
+
+# Sanity checks
+for x in terraform uname curl unzip ls cut; do
+    if ! which "$x" > /dev/null; then
+        echo "Missing command: $x"
+        exit 1
+    fi
+done
+
+
+# Parse version to update to
+ver_response=`terraform --version | grep -A 1 'Your version of Terraform is out of date'`
+if test $? -ne 0; then
+    echo "No update required."
+    exit 0;
+fi
+
+version=`echo "$ver_response" | sed -ne 's/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p'`
+
+
+# Get OS & architecture
+case `uname -s` in
+    Linux | GNU* )
+        os=linux
+        ;;
+    Darwin )
+        os=darwin
+        ;;
+    FreeBSD )
+        os=freebsd
+        ;;
+    OpenBSD )
+        os=openbsd
+        ;;
+    SunOS )
+        os=solaris
+        ;;
+    * )
+        case `uname -o` in
+            Msys | Cygwin )
+                os=windows
+                ;;
+            * )
+                echo "OS not supported $(uname -s)."
+                exit 1
+                ;;
+        esac
+        ;;
+esac
+
+case `uname -m` in
+    arm* )
+        arch=arm
+        ;;
+    x86_64 | amd64 | i686-64 )
+        arch=amd64
+        ;;
+    i[36]86* | i86pc | x86 )
+        arch=386
+        ;;
+    * )
+        echo "Architecture not supported: $(uname -m)"
+        exit 1
+        ;;
+esac
+
+
+# Try to download the update
+url="${base_url}/${version}/terraform_${version}_${os}_${arch}.zip"
+echo "Downloading from: $url"
+if curl -fo terraform.zip "$url"; then
+    if unzip terraform.zip; then
+        # Should be already executable, but just to make sure...
+        chmod 755 terraform
+
+        # Install the new version
+        location=`which terraform`
+        owner=`ls -l "$location" | cut -f3 -d' '`
+        dir_owner=`ls -ld "$(dirname "$location")" | cut -f3 -d' '`
+
+        if [ `whoami` = "$dir_owner" ] && [ "$owner" = "$dir_owner" ]; then
+            echo "Installing terraform to $location"
+            mv terraform "$location"
+        elif which sudo > /dev/null; then
+            echo "Installing terraform to $location"
+            sudo mv terraform "$location"
+        elif which su > /dev/null; then
+            echo "Installing terraform to $location"
+            su -c "mv terraform '$location'" "$dir_owner"
+        else
+            echo "Please move ./terraform to: $location"
+        fi
+    else
+        echo "Failed to unzip ./terraform.zip"
+        exit 1
+    fi
+else
+    echo "Couldn't find a zip for your machine: $(uname -sm)"
+    echo "The following are the versions available for this Terraform release:"
+    curl -s "https://releases.hashicorp.com/terraform/$version/" | sed -ne 's#^.*<a data-product=.*\?>\([^<]\+\)</a>.*$#\1#p'
+    exit 1
+fi
